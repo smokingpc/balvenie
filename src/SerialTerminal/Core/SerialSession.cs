@@ -93,21 +93,19 @@ namespace SerialTerminal.Core
             port.RtsEnable = settings.RtsEnable;
             port.ReadBufferSize = settings.ReadBufferSize;
             port.WriteBufferSize = settings.WriteBufferSize;
-            port.WriteTimeout = settings.WriteTimeoutMs;
-            port.ReadTimeout = SerialPort.InfiniteTimeout;
+            port.WriteTimeout = settings.ReadWriteTimeoutMs;
+            port.ReadTimeout = settings.ReadWriteTimeoutMs;
 
             // Throws UnauthorizedAccessException when the port is taken by another
             // process, IOException when the device vanished, ArgumentException on a
             // bad port name. The caller reports these to the user.
             port.Open();
 
-            try
-            {
+            try {
                 port.DiscardInBuffer();
                 port.DiscardOutBuffer();
             }
-            catch (Exception)
-            {
+            catch (Exception) {
                 // Some virtual COM drivers do not implement discard; harmless.
             }
 
@@ -126,8 +124,8 @@ namespace SerialTerminal.Core
             });
 
             CancellationToken token = _Cts.Token;
-            _ReadTask = Task.Run(function: () => ReadLoopAsync(port, token));
-            _WriteTask = Task.Run(function: () => WriteLoopAsync(port, token));
+            _ReadTask = Task.Run(function: () => ReadLoopThread(port, token));
+            _WriteTask = Task.Run(function: () => WriteLoopThread(port, token));
         }
 
         /// <summary>Queues bytes for transmission. Never blocks the caller.</summary>
@@ -203,7 +201,7 @@ namespace SerialTerminal.Core
             RaiseClosed(false);
         }
 
-        private async Task ReadLoopAsync(SerialPort port, CancellationToken token)
+        private async Task ReadLoopThread(SerialPort port, CancellationToken token)
         {
             byte[] buffer = new byte[ReadBlockSize];
             Stream stream;
@@ -259,7 +257,7 @@ namespace SerialTerminal.Core
             }
         }
 
-        private async Task WriteLoopAsync(SerialPort port, CancellationToken token)
+        private async Task WriteLoopThread(SerialPort port, CancellationToken token)
         {
             Channel<byte[]> channel = _TxChannel;
             Stream stream;

@@ -18,7 +18,7 @@ namespace SerialTerminal.Core
 
         public int ReadBufferSize = 1 << 16;
         public int WriteBufferSize = 1 << 16;
-        public int WriteTimeoutMs = 3000;
+        public int ReadWriteTimeoutMs = 5000;
 
         public override string ToString()
         {

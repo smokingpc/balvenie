@@ -23,6 +23,8 @@ namespace SerialTerminal
         private const int MaxOutputChars = 400000;
         private const int TrimChars = 120000;
 
+        private const int SerialPortTimeout = 3 * 1000;
+
         private static readonly Color _ColorRx = Color.FromArgb(0x10, 0x10, 0x10);
         private static readonly Color _ColorTx = Color.FromArgb(0x00, 0x66, 0xCC);
         private static readonly Color _ColorInfo = Color.FromArgb(0xB0, 0x50, 0x00);
@@ -258,6 +260,7 @@ namespace SerialTerminal
             settings.Handshake = (Handshake)((ComboItem)_CmbFlow.SelectedItem).Value;
             settings.DtrEnable = _ChkDtr.Checked;
             settings.RtsEnable = _ChkRts.Checked;
+            settings.ReadWriteTimeoutMs = SerialPortTimeout;
             return settings;
         }
 
