@@ -34,9 +34,12 @@ namespace SerialTerminal
         private readonly StreamFormatter _Formatter = new StreamFormatter();
         private readonly System.Windows.Forms.Timer _FlushTimer = new System.Windows.Forms.Timer();
         private readonly System.Windows.Forms.Timer _StatusTimer = new System.Windows.Forms.Timer();
-        private readonly List<string> _SendHistory = new List<string>();
 
+#if SUPPORT_SEND_HISTORY
+        private readonly List<string> _SendHistory = new List<string>();
         private int _HistoryIndex = -1;
+#endif
+
         private bool _ForceClose;
 
         public MainForm()
@@ -56,8 +59,8 @@ namespace SerialTerminal
             _Formatter.Encoding = Encoding.Latin1;
             _Formatter.Mode = DisplayMode.Text;
 
-            _Session.DataReceived += OnSessionData;
-            _Session.DataSent += OnSessionSent;
+            _Session.DataReceived += OnSessionDataRecv;
+            _Session.DataSent += OnSessionDataSent;
             _Session.Error += OnSessionError;
             _Session.Closed += OnSessionClosed;
 
@@ -210,7 +213,7 @@ namespace SerialTerminal
             }
             catch (UnauthorizedAccessException)
             {
-                ShowError(settings.PortName + " is in use by another application.");
+                ShowError(settings._PortName + " is in use by another application.");
                 return;
             }
             catch (ArgumentException ex)
@@ -220,7 +223,7 @@ namespace SerialTerminal
             }
             catch (IOException ex)
             {
-                ShowError("Cannot open " + settings.PortName + ": " + ex.Message);
+                ShowError("Cannot open " + settings._PortName + ": " + ex.Message);
                 return;
             }
             catch (InvalidOperationException ex)
@@ -252,15 +255,15 @@ namespace SerialTerminal
             }
 
             SerialPortSettings settings = new SerialPortSettings();
-            settings.PortName = portName;
-            settings.BaudRate = baudRate;
-            settings.DataBits = int.Parse((string)_CmbDataBits.SelectedItem, CultureInfo.InvariantCulture);
-            settings.Parity = (Parity)((ComboItem)_CmbParity.SelectedItem).Value;
-            settings.StopBits = (StopBits)((ComboItem)_CmbStopBits.SelectedItem).Value;
-            settings.Handshake = (Handshake)((ComboItem)_CmbFlow.SelectedItem).Value;
-            settings.DtrEnable = _ChkDtr.Checked;
-            settings.RtsEnable = _ChkRts.Checked;
-            settings.ReadWriteTimeoutMs = SerialPortTimeout;
+            settings._PortName = portName;
+            settings._BaudRate = baudRate;
+            settings._DataBits = int.Parse((string)_CmbDataBits.SelectedItem, CultureInfo.InvariantCulture);
+            settings._Parity = (Parity)((ComboItem)_CmbParity.SelectedItem).Value;
+            settings._StopBits = (StopBits)((ComboItem)_CmbStopBits.SelectedItem).Value;
+            settings._Handshake = (Handshake)((ComboItem)_CmbFlow.SelectedItem).Value;
+            settings._DtrEnable = _ChkDtr.Checked;
+            settings._RtsEnable = _ChkRts.Checked;
+            settings._ReadWriteTimeoutMs = SerialPortTimeout;
             return settings;
         }
 
@@ -286,12 +289,12 @@ namespace SerialTerminal
         // Session events (background threads -- enqueue only)
         // ====================================================================
 
-        private void OnSessionData(object sender, LogChunk chunk)
+        private void OnSessionDataRecv(object sender, LogChunk chunk)
         {
             _Pending.Enqueue(chunk);
         }
 
-        private void OnSessionSent(object sender, LogChunk chunk)
+        private void OnSessionDataSent(object sender, LogChunk chunk)
         {
             _Pending.Enqueue(chunk);
         }
@@ -338,20 +341,20 @@ namespace SerialTerminal
                 {
                     processed++;
 
-                    if (chunk.Direction == Direction.Tx && !_ChkLocalEcho.Checked)
+                    if (chunk._Direction == Direction.Tx && !_ChkLocalEcho.Checked)
                     {
                         continue;
                     }
 
                     // Flush the accumulated text whenever the colour has to change.
-                    if (chunk.Direction != batchDirection && sb.Length > 0)
+                    if (chunk._Direction != batchDirection && sb.Length > 0)
                     {
                         AppendColored(sb.ToString(), ColorFor(batchDirection));
                         sb.Length = 0;
                         wroteAnything = true;
                     }
 
-                    batchDirection = chunk.Direction;
+                    batchDirection = chunk._Direction;
                     sb.Append(_Formatter.Format(chunk));
                 }
 
@@ -454,7 +457,7 @@ namespace SerialTerminal
                 SendCurrentInput();
                 return;
             }
-
+#if SUPPORT_SEND_HISTORY
             if (e.KeyCode == Keys.Up && _SendHistory.Count > 0)
             {
                 e.SuppressKeyPress = true;
@@ -480,6 +483,7 @@ namespace SerialTerminal
                 }
                 _TxtSend.SelectionStart = _TxtSend.TextLength;
             }
+#endif
         }
 
         private void SendCurrentInput()
@@ -522,6 +526,7 @@ namespace SerialTerminal
                 return;
             }
 
+#if SUPPORT_SEND_HISTORY
             _SendHistory.Add(input);
             if (_SendHistory.Count > 200)
             {
@@ -530,6 +535,7 @@ namespace SerialTerminal
             _HistoryIndex = -1;
             _TxtSend.SelectAll();
             _TxtSend.Focus();
+#endif
         }
 
         private byte[] AppendEol(byte[] body, Encoding encoding)

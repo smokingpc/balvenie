@@ -32,7 +32,8 @@ namespace SerialTerminal.Core
     /// </summary>
     public sealed class SerialSession : IDisposable
     {
-        private const int ReadBlockSize = 4096;
+        private const int StreamReadSize = 1024;
+        private const int ReadBufferSize = 4096 + StreamReadSize;
 
         private SerialPort _Port;
         private CancellationTokenSource _Cts;
@@ -60,8 +61,8 @@ namespace SerialTerminal.Core
         {
             get
             {
-                SerialPort p = _Port;
-                return p != null && p.IsOpen;
+                SerialPort port = _Port;
+                return port != null && port.IsOpen;
             }
         }
 
@@ -82,19 +83,19 @@ namespace SerialTerminal.Core
             }
 
             SerialPort port = new SerialPort(
-                settings.PortName,
-                settings.BaudRate,
-                settings.Parity,
-                settings.DataBits,
-                settings.StopBits);
+                settings._PortName,
+                settings._BaudRate,
+                settings._Parity,
+                settings._DataBits,
+                settings._StopBits);
 
-            port.Handshake = settings.Handshake;
-            port.DtrEnable = settings.DtrEnable;
-            port.RtsEnable = settings.RtsEnable;
-            port.ReadBufferSize = settings.ReadBufferSize;
-            port.WriteBufferSize = settings.WriteBufferSize;
-            port.WriteTimeout = settings.ReadWriteTimeoutMs;
-            port.ReadTimeout = settings.ReadWriteTimeoutMs;
+            port.Handshake = settings._Handshake;
+            port.DtrEnable = settings._DtrEnable;
+            port.RtsEnable = settings._RtsEnable;
+            port.ReadBufferSize = settings._ReadBufferSize;
+            port.WriteBufferSize = settings._WriteBufferSize;
+            port.WriteTimeout = settings._ReadWriteTimeoutMs;
+            port.ReadTimeout = settings._ReadWriteTimeoutMs;
 
             // Throws UnauthorizedAccessException when the port is taken by another
             // process, IOException when the device vanished, ArgumentException on a
@@ -124,8 +125,8 @@ namespace SerialTerminal.Core
             });
 
             CancellationToken token = _Cts.Token;
-            _ReadTask = Task.Run(function: () => ReadLoopThread(port, token));
-            _WriteTask = Task.Run(function: () => WriteLoopThread(port, token));
+            _ReadTask = Task.Run(function: () => SerialPortReadThread(port, token));
+            _WriteTask = Task.Run(function: () => SerialPortWriteThread(port, token));
         }
 
         /// <summary>Queues bytes for transmission. Never blocks the caller.</summary>
@@ -201,9 +202,10 @@ namespace SerialTerminal.Core
             RaiseClosed(false);
         }
 
-        private async Task ReadLoopThread(SerialPort port, CancellationToken token)
+        private async Task SerialPortReadThread(SerialPort port, CancellationToken token)
         {
-            byte[] buffer = new byte[ReadBlockSize];
+            byte[] buffer = new byte[ReadBufferSize];
+            int offset = 0;
             Stream stream;
 
             try
@@ -212,6 +214,8 @@ namespace SerialTerminal.Core
             }
             catch (Exception)
             {
+                //if port not opened, BaseStream throws InvalidOperationException.
+                //This can happen if the port is closed before the read thread starts.
                 return;
             }
 
@@ -219,22 +223,40 @@ namespace SerialTerminal.Core
             {
                 while (!token.IsCancellationRequested)
                 {
-                    int n = await stream.ReadAsync(buffer, 0, buffer.Length, token).ConfigureAwait(false);
-                    if (n <= 0)
+                    int read_size = 0;
+                    try 
                     {
-                        // Should not normally happen on a serial stream; avoid a hot loop.
-                        await Task.Delay(5, token).ConfigureAwait(false);
-                        continue;
+                        read_size = stream.Read(buffer, offset, StreamReadSize);
+                    }
+                    catch (TimeoutException ex)
+                    {
+                        // Read timeout is normal, just continue the loop to read again.
+                        // To prevent a busy loop, add a small sleep here.
+                        await Task.Delay(10, token).ConfigureAwait(false);
                     }
 
-                    byte[] chunk = new byte[n];
-                    Buffer.BlockCopy(buffer, 0, chunk, 0, n);
-                    Interlocked.Add(ref _RxBytes, n);
+                    if (read_size > 0) {
+                        if (1 == read_size && buffer[0] == 0)
+                        {
+                            continue;
+                        }
+                        byte[] chunk = new byte[read_size];
+                        Buffer.BlockCopy(buffer, offset, chunk, 0, read_size);
+                        Interlocked.Add(ref _RxBytes, read_size);
+                        if ((offset + read_size) > (ReadBufferSize - StreamReadSize)) 
+                        {
+                            offset = 0;
+                            Array.Clear(buffer);
+                        }
+                        else 
+                        { 
+                            offset += read_size;
+                        }
 
-                    EventHandler<LogChunk> handler = DataReceived;
-                    if (handler != null)
-                    {
-                        handler(this, new LogChunk(Direction.Rx, chunk));
+                        EventHandler<LogChunk> handler = DataReceived;
+                        if (handler != null) {
+                            handler(this, new LogChunk(Direction.Rx, chunk));
+                        }
                     }
                 }
             }
@@ -257,7 +279,7 @@ namespace SerialTerminal.Core
             }
         }
 
-        private async Task WriteLoopThread(SerialPort port, CancellationToken token)
+        private async Task SerialPortWriteThread(SerialPort port, CancellationToken token)
         {
             Channel<byte[]> channel = _TxChannel;
             Stream stream;
@@ -273,20 +295,22 @@ namespace SerialTerminal.Core
 
             try
             {
-                while (await channel.Reader.WaitToReadAsync(token).ConfigureAwait(false))
+                while (!token.IsCancellationRequested) 
                 {
                     byte[] data;
-                    while (channel.Reader.TryRead(out data))
+                    channel.Reader.TryRead(out data);
+                    if (data == null) 
                     {
-                        await stream.WriteAsync(data, 0, data.Length, token).ConfigureAwait(false);
-                        await stream.FlushAsync(token).ConfigureAwait(false);
-                        Interlocked.Add(ref _TxBytes, data.Length);
+                        await Task.Delay(10, token).ConfigureAwait(false);
+                        continue;
+                    }
+                    stream.Write(data, 0, data.Length);
+                    stream.Flush();
+                    Interlocked.Add(ref _TxBytes, data.Length);
 
-                        EventHandler<LogChunk> handler = DataSent;
-                        if (handler != null)
-                        {
-                            handler(this, new LogChunk(Direction.Tx, data));
-                        }
+                    EventHandler<LogChunk> handler = DataSent;
+                    if (handler != null) {
+                        handler(this, new LogChunk(Direction.Tx, data));
                     }
                 }
             }

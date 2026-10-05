@@ -5,25 +5,25 @@ namespace SerialTerminal.Core
     /// <summary>Plain snapshot of everything the UI can configure on the port.</summary>
     public sealed class SerialPortSettings
     {
-        public string PortName = "COM1";
-        public int BaudRate = 115200;
-        public int DataBits = 8;
-        public Parity Parity = Parity.None;
-        public StopBits StopBits = StopBits.One;
-        public Handshake Handshake = Handshake.None;
+        public string _PortName = "COM1";
+        public int _BaudRate = 115200;
+        public int _DataBits = 8;
+        public Parity _Parity = Parity.None;
+        public StopBits _StopBits = StopBits.One;
+        public Handshake _Handshake = Handshake.None;
 
         // Many USB-UART bridges and MCU boards only transmit while DTR/RTS are asserted.
-        public bool DtrEnable = true;
-        public bool RtsEnable = true;
+        public bool _DtrEnable = true;
+        public bool _RtsEnable = true;
 
-        public int ReadBufferSize = 1 << 16;
-        public int WriteBufferSize = 1 << 16;
-        public int ReadWriteTimeoutMs = 5000;
+        public int _ReadBufferSize = 1 << 16;
+        public int _WriteBufferSize = 1 << 16;
+        public int _ReadWriteTimeoutMs = 5000;
 
         public override string ToString()
         {
             return string.Format("{0} {1},{2},{3},{4} flow={5}",
-                PortName, BaudRate, DataBits, Parity, StopBits, Handshake);
+                _PortName, _BaudRate, _DataBits, _Parity, _StopBits, _Handshake);
         }
     }
 }

@@ -61,22 +61,22 @@ namespace SerialTerminal.Core
         {
             StringBuilder sb = new StringBuilder();
 
-            if (chunk.Direction == Direction.Info)
+            if (chunk._Direction == Direction.Info)
             {
                 if (!_AtLineStart)
                 {
                     sb.Append('\n');
                 }
-                sb.Append("*** ").Append(chunk.Text).Append('\n');
+                sb.Append("*** ").Append(chunk._Text).Append('\n');
                 _AtLineStart = true;
                 _HexColumn = 0;
                 _LastDirection = Direction.Info;
-                _LastTime = chunk.Time;
+                _LastTime = chunk._Time;
                 return sb.ToString();
             }
 
-            bool directionChanged = chunk.Direction != _LastDirection;
-            bool longGap = (chunk.Time - _LastTime) > GapThreshold;
+            bool directionChanged = chunk._Direction != _LastDirection;
+            bool longGap = (chunk._Time - _LastTime) > GapThreshold;
 
             if (ShowTimestamp && (directionChanged || longGap))
             {
@@ -86,9 +86,9 @@ namespace SerialTerminal.Core
                     _AtLineStart = true;
                 }
                 sb.Append('[')
-                  .Append(chunk.Time.ToString("HH:mm:ss.fff"))
+                  .Append(chunk._Time.ToString("HH:mm:ss.fff"))
                   .Append(' ')
-                  .Append(chunk.Direction == Direction.Tx ? "TX" : "RX")
+                  .Append(chunk._Direction == Direction.Tx ? "TX" : "RX")
                   .Append("] ");
                 _HexColumn = 0;
                 _AtLineStart = false;
@@ -104,15 +104,15 @@ namespace SerialTerminal.Core
 
             if (Mode == DisplayMode.Hex)
             {
-                AppendHex(sb, chunk.Data);
+                AppendHex(sb, chunk._Data);
             }
             else
             {
-                AppendText(sb, chunk.Data);
+                AppendText(sb, chunk._Data);
             }
 
-            _LastDirection = chunk.Direction;
-            _LastTime = chunk.Time;
+            _LastDirection = chunk._Direction;
+            _LastTime = chunk._Time;
 
             if (sb.Length > 0)
             {
